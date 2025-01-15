@@ -1,0 +1,4 @@
+spring:
+  data:
+    mongodb:
+      uri: mongodb+srv://Dias:rootroot@libraryapp.ycbyl.mongodb.net/library?retryWrites=true&w=majority&appName=LibraryApp
