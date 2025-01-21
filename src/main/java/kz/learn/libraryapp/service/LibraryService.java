@@ -5,9 +5,11 @@ import kz.learn.libraryapp.entity.BookEntity;
 import kz.learn.libraryapp.repository.AuthorRepository;
 import kz.learn.libraryapp.repository.BookRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -28,6 +30,7 @@ public class LibraryService {
     public Mono<BookEntity> createBook(String title) {
         BookEntity book = new BookEntity();
         book.setId(UUID.randomUUID());
+        book.setAddedDate(LocalDate.now());
         book.setTitle(title);
         return bookRepository.save(book);
     }
