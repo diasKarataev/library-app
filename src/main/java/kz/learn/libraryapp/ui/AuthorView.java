@@ -21,6 +21,8 @@ public class AuthorView extends VerticalLayout {
     private final LibraryService libraryService;
     private final Grid<AuthorEntity> authorGrid = new Grid<>(AuthorEntity.class, false);
     private final TextField nameField = new TextField("Name");
+    private final TextField filterField = new TextField("Filter by Name"); // Поле для фильтрации
+    private final Button filterButton = new Button("Filter"); // Кнопка фильтрации
     private final Button addButton = new Button("Add Author");
     private final Button refreshButton = new Button("Refresh");
 
@@ -29,6 +31,7 @@ public class AuthorView extends VerticalLayout {
         setupGrid();
         setupForm();
         setupListeners();
+        setupFilter();
         Notification.show("Loading authors...", 2000, Notification.Position.MIDDLE);
         loadAuthors();
     }
@@ -41,7 +44,6 @@ public class AuthorView extends VerticalLayout {
             return anchor;
         }).setHeader("Name");
 
-
         authorGrid.addComponentColumn(author -> {
             Button deleteButton = new Button("Delete", event -> {
                 deleteAuthor(author);
@@ -51,6 +53,44 @@ public class AuthorView extends VerticalLayout {
         }).setHeader("Actions");
 
         add(authorGrid);
+    }
+
+    private void setupFilter() {
+        // Фильтрация авторов
+        filterButton.addClickListener(event -> {
+            String filterText = filterField.getValue();
+            if (filterText == null || filterText.trim().isEmpty()) {
+                Notification.show("Please enter a name to filter", 3000, Notification.Position.MIDDLE);
+                loadAuthors(); // Если поле фильтра пустое, загружаем всех авторов
+                return;
+            }
+
+            filterAuthors(filterText.trim());
+        });
+
+        HorizontalLayout filterLayout = new HorizontalLayout(filterField, filterButton);
+        add(filterLayout);
+    }
+
+    private void filterAuthors(String name) {
+        libraryService.getAllAuthors()
+                .subscribe(authors -> {
+                    getUI().ifPresent(ui -> ui.access(() -> {
+                        var filteredAuthors = authors.stream()
+                                .filter(author -> author.getName() != null && author.getName().toLowerCase().contains(name.toLowerCase()))
+                                .toList();
+                        if (filteredAuthors.isEmpty()) {
+                            Notification.show("No authors found for the name: " + name, 3000, Notification.Position.MIDDLE);
+                            authorGrid.setItems(); // Очищаем таблицу
+                        } else {
+                            authorGrid.setItems(filteredAuthors);
+                        }
+                    }));
+                }, error -> {
+                    getUI().ifPresent(ui -> ui.access(() ->
+                            Notification.show("Failed to filter authors: " + error.getMessage(), 3000, Notification.Position.MIDDLE)
+                    ));
+                });
     }
 
     private void deleteAuthor(AuthorEntity author) {
@@ -65,7 +105,6 @@ public class AuthorView extends VerticalLayout {
             ));
         });
     }
-
 
     private void setupForm() {
         HorizontalLayout formLayout = new HorizontalLayout(nameField, addButton, refreshButton);

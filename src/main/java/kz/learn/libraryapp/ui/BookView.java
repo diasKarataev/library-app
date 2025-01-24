@@ -26,9 +26,12 @@ public class BookView extends VerticalLayout {
     private final Grid<BookEntity> bookGrid = new Grid<>(BookEntity.class, false);
     private final AuthorRepository authorRepository;
 
+    private final TextField filterField = new TextField("Filter by Title"); // Поле для фильтрации
+
     @PostConstruct
     public void init() {
         setupGrid();
+        setupFilter();
         setupListeners();
         Notification.show("Loading books...", 2000, Notification.Position.MIDDLE);
         loadBooks();
@@ -65,6 +68,37 @@ public class BookView extends VerticalLayout {
         }).setHeader("Actions");
 
         add(bookGrid);
+    }
+
+    private void setupFilter() {
+        // Добавляем поле фильтрации и кнопку
+        Button filterButton = new Button("Apply Filter", event -> applyFilter());
+        filterButton.getStyle().set("margin-left", "10px");
+
+        HorizontalLayout filterLayout = new HorizontalLayout(filterField, filterButton);
+        add(filterLayout);
+    }
+
+    private void applyFilter() {
+        String filterText = filterField.getValue();
+        if (filterText == null || filterText.trim().isEmpty()) {
+            // Если фильтр пустой, загружаем все книги
+            loadBooks();
+        } else {
+            // Фильтруем книги по названию
+            libraryService.getAllBooks()
+                    .subscribe(books -> {
+                        getUI().ifPresent(ui -> ui.access(() -> {
+                            var filteredBooks = books.stream()
+                                    .filter(book -> book.getTitle() != null && book.getTitle().toLowerCase().contains(filterText.toLowerCase()))
+                                    .toList();
+                            if (filteredBooks.isEmpty()) {
+                                Notification.show("No books match the filter.", 3000, Notification.Position.MIDDLE);
+                            }
+                            bookGrid.setItems(filteredBooks);
+                        }));
+                    });
+        }
     }
 
     private void setupListeners() {
