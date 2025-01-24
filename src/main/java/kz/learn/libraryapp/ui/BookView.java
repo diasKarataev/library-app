@@ -1,7 +1,9 @@
 package kz.learn.libraryapp.ui;
 
 import com.vaadin.flow.component.button.Button;
+import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.grid.Grid;
+import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
@@ -13,33 +15,32 @@ import kz.learn.libraryapp.entity.BookEntity;
 import kz.learn.libraryapp.repository.AuthorRepository;
 import kz.learn.libraryapp.service.LibraryService;
 import lombok.RequiredArgsConstructor;
-
-import java.util.List;
-import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 
 @Route("books")
+@Slf4j
 @RequiredArgsConstructor
 public class BookView extends VerticalLayout {
 
     private final LibraryService libraryService;
     private final Grid<BookEntity> bookGrid = new Grid<>(BookEntity.class, false);
-    private final TextField titleField = new TextField("Title");
-    private final TextField authorField = new TextField("Author Name");
-    private final Button addButton = new Button("Add Book");
-    private final Button searchButton = new Button("Search by Author");
-    private final Button refreshButton = new Button("Refresh");
     private final AuthorRepository authorRepository;
 
     @PostConstruct
     public void init() {
         setupGrid();
-        setupForm();
         setupListeners();
+        Notification.show("Loading books...", 2000, Notification.Position.MIDDLE);
         loadBooks();
     }
 
     private void setupGrid() {
-        bookGrid.addColumn(BookEntity::getTitle).setHeader("Title");
+        bookGrid.addComponentColumn(book -> {
+            Anchor anchor = new Anchor("/book/" + book.getId().toString(), book.getTitle());
+            anchor.getStyle().set("text-decoration", "none");
+            anchor.getStyle().set("color", "blue");
+            return anchor;
+        }).setHeader("Title");
 
         bookGrid.addColumn(book -> {
             if (book.getAuthorIds() == null || book.getAuthorIds().isEmpty()) {
@@ -55,78 +56,81 @@ public class BookView extends VerticalLayout {
                     .orElse("No authors");
         }).setHeader("Authors");
 
+        bookGrid.addComponentColumn(book -> {
+            Button deleteButton = new Button("Delete", event -> {
+                deleteBook(book);
+            });
+            deleteButton.getStyle().set("color", "red");
+            return deleteButton;
+        }).setHeader("Actions");
+
         add(bookGrid);
     }
 
-    private void setupForm() {
-        HorizontalLayout formLayout = new HorizontalLayout(titleField, addButton, refreshButton, authorField, searchButton);
-        add(formLayout);
+    private void setupListeners() {
+        Button openAddDialogButton = new Button("Add Book", event -> openAddBookDialog());
+        Button refreshButton = new Button("Refresh", event -> loadBooks());
+        HorizontalLayout buttonsLayout = new HorizontalLayout(openAddDialogButton, refreshButton);
+        add(buttonsLayout);
     }
 
-    private void setupListeners() {
-        addButton.addClickListener(event -> {
+    private void loadBooks() {
+        libraryService.getAllBooks()
+                .subscribe(books -> {
+                    getUI().ifPresent(ui -> ui.access(() -> {
+                        if (books.isEmpty()) {
+                            Notification.show("No books found.", 3000, Notification.Position.MIDDLE);
+                        } else {
+                            bookGrid.setItems(books);
+                        }
+                    }));
+                });
+    }
+
+    private void openAddBookDialog() {
+        Dialog dialog = new Dialog();
+
+        TextField titleField = new TextField("Title");
+
+        Button addButton = new Button("Add", event -> {
             String title = titleField.getValue();
             if (title == null || title.isEmpty()) {
                 Notification.show("Title cannot be empty", 3000, Notification.Position.MIDDLE);
                 return;
             }
-            addBook(title);
+            libraryService.createBook(title).subscribe(book -> {
+                getUI().ifPresent(ui -> ui.access(() -> {
+                    Notification.show("Book added successfully: " + book.getTitle());
+                    titleField.clear();
+                    dialog.close();
+                    loadBooks();
+                }));
+            }, error -> {
+                getUI().ifPresent(ui -> ui.access(() ->
+                        Notification.show("Failed to add book: " + error.getMessage(), 3000, Notification.Position.MIDDLE)
+                ));
+            });
         });
 
-        refreshButton.addClickListener(event -> loadBooks());
+        Button cancelButton = new Button("Cancel", event -> dialog.close());
 
-        searchButton.addClickListener(event -> {
-            String authorName = authorField.getValue();
-            if (authorName == null || authorName.isEmpty()) {
-                Notification.show("Author name cannot be empty", 3000, Notification.Position.MIDDLE);
-                return;
-            }
-            searchBooksByAuthor(authorName);
-        });
+        HorizontalLayout buttonsLayout = new HorizontalLayout(addButton, cancelButton);
+
+        VerticalLayout dialogLayout = new VerticalLayout(titleField, buttonsLayout);
+        dialog.add(dialogLayout);
+
+        dialog.open();
     }
 
-    private void loadBooks() {
-        libraryService.getAllBooks().subscribe(books -> {
+    private void deleteBook(BookEntity book) {
+        libraryService.deleteBook(book.getId()).subscribe(i -> {
             getUI().ifPresent(ui -> ui.access(() -> {
-                bookGrid.setItems(books);
+                Notification.show("Book deleted successfully: " + book.getTitle(), 3000, Notification.Position.MIDDLE);
+                loadBooks();
             }));
         }, error -> {
             getUI().ifPresent(ui -> ui.access(() ->
-                    Notification.show("Failed to load books: " + error.getMessage(), 3000, Notification.Position.MIDDLE)
-            ));
-        });
-    }
-
-    private void addBook(String title) {
-        libraryService.createBook(title).subscribe(book -> {
-            getUI().ifPresent(ui -> ui.access(() -> {
-                Notification.show("Book added successfully: " + book.getTitle());
-                titleField.clear();
-                loadBooks(); // Обновляем список после добавления
-            }));
-        }, error -> {
-            getUI().ifPresent(ui -> ui.access(() ->
-                    Notification.show("Failed to add book: " + error.getMessage(), 3000, Notification.Position.MIDDLE)
-            ));
-        });
-    }
-
-    private void searchBooksByAuthor(String authorName) {
-        libraryService.getAuthorByName(authorName).flatMapMany(author -> {
-            UUID authorId = author.getId();
-            return libraryService.getAllBooks().map(books ->
-                    books.stream().filter(book -> book.getAuthorIds() != null && book.getAuthorIds().contains(authorId)).toList()
-            );
-        }).subscribe(books -> {
-            getUI().ifPresent(ui -> ui.access(() -> {
-                bookGrid.setItems(books);
-                if (books.isEmpty()) {
-                    Notification.show("No books found for author: " + authorName, 3000, Notification.Position.MIDDLE);
-                }
-            }));
-        }, error -> {
-            getUI().ifPresent(ui -> ui.access(() ->
-                    Notification.show("Failed to search books: " + error.getMessage(), 3000, Notification.Position.MIDDLE)
+                    Notification.show("Failed to delete book: " + error.getMessage(), 3000, Notification.Position.MIDDLE)
             ));
         });
     }

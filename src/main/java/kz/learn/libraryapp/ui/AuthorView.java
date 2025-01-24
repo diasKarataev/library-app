@@ -2,6 +2,7 @@ package kz.learn.libraryapp.ui;
 
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.grid.Grid;
+import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
@@ -11,7 +12,6 @@ import jakarta.annotation.PostConstruct;
 import kz.learn.libraryapp.entity.AuthorEntity;
 import kz.learn.libraryapp.service.LibraryService;
 import lombok.RequiredArgsConstructor;
-import reactor.core.publisher.Mono;
 
 
 @Route("authors")
@@ -29,14 +29,43 @@ public class AuthorView extends VerticalLayout {
         setupGrid();
         setupForm();
         setupListeners();
+        Notification.show("Loading authors...", 2000, Notification.Position.MIDDLE);
         loadAuthors();
     }
 
     private void setupGrid() {
-        authorGrid.addColumn(AuthorEntity::getId).setHeader("ID");
-        authorGrid.addColumn(AuthorEntity::getName).setHeader("Name");
+        authorGrid.addComponentColumn(author -> {
+            Anchor anchor = new Anchor("author/" + author.getId().toString(), author.getName());
+            anchor.getStyle().set("text-decoration", "none");
+            anchor.getStyle().set("color", "blue");
+            return anchor;
+        }).setHeader("Name");
+
+
+        authorGrid.addComponentColumn(author -> {
+            Button deleteButton = new Button("Delete", event -> {
+                deleteAuthor(author);
+            });
+            deleteButton.getStyle().set("color", "red");
+            return deleteButton;
+        }).setHeader("Actions");
+
         add(authorGrid);
     }
+
+    private void deleteAuthor(AuthorEntity author) {
+        libraryService.deleteAuthor(author.getId()).subscribe(i -> {
+            getUI().ifPresent(ui -> ui.access(() -> {
+                Notification.show("Author deleted successfully: " + author.getName(), 3000, Notification.Position.MIDDLE);
+                loadAuthors();
+            }));
+        }, error -> {
+            getUI().ifPresent(ui -> ui.access(() ->
+                    Notification.show("Failed to delete author: " + error.getMessage(), 3000, Notification.Position.MIDDLE)
+            ));
+        });
+    }
+
 
     private void setupForm() {
         HorizontalLayout formLayout = new HorizontalLayout(nameField, addButton, refreshButton);

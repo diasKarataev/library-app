@@ -5,8 +5,8 @@ import kz.learn.libraryapp.entity.BookEntity;
 import kz.learn.libraryapp.repository.AuthorRepository;
 import kz.learn.libraryapp.repository.BookRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.LocalDate;
@@ -38,6 +38,12 @@ public class LibraryService {
     public Mono<BookEntity> getBookByTitle(String title) {
         return bookRepository.findByTitle(title);
     }
+
+    public Mono<BookEntity> getBookById(UUID uuid) {
+        return bookRepository.findById(uuid);
+    }
+
+    public Mono<AuthorEntity> getAuthorById(UUID bookId) { return authorRepository.findById(bookId); }
 
     public Mono<AuthorEntity> getAuthorByName(String name) {
         return authorRepository.findByName(name);
@@ -84,12 +90,23 @@ public class LibraryService {
 
     public Mono<Void> deleteAuthor(UUID authorId) {
         return bookRepository.findAll()
-                .filter(book -> book.getAuthorIds().contains(authorId))
-                .flatMap(book -> {
-                    book.getAuthorIds().remove(authorId);
-                    return bookRepository.save(book);
-                })
-                .then(authorRepository.deleteById(authorId));
+                .filter(book -> book.getAuthorIds() != null && book.getAuthorIds().contains(authorId))
+                .collectList()
+                .flatMap(books -> {
+                    if (!books.isEmpty()) {
+                        return Flux.fromIterable(books)
+                                .flatMap(book -> {
+                                    book.getAuthorIds().remove(authorId);
+                                    return bookRepository.save(book);
+                                })
+                                .then(authorRepository.deleteById(authorId));
+                    } else {
+                        return authorRepository.deleteById(authorId);
+                    }
+                });
     }
+
+
+
 
 }
