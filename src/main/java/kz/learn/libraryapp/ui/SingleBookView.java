@@ -1,6 +1,7 @@
 package kz.learn.libraryapp.ui;
 
 import com.vaadin.flow.component.button.Button;
+import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.notification.Notification;
@@ -25,11 +26,14 @@ public class SingleBookView extends VerticalLayout implements HasUrlParameter<St
 
     private UUID currentBookId;
     private final Grid<AuthorEntity> authorGrid = new Grid<>(AuthorEntity.class, false);
+    private final Button addAuthorButton = new Button("Add Author");
 
     @Override
     public void setParameter(BeforeEvent event, String parameter) {
         Span statusSpan = new Span("Loading book details...");
-        add(statusSpan, authorGrid);
+        add(statusSpan, addAuthorButton, authorGrid);
+
+        addAuthorButton.addClickListener(event1 -> showAddAuthorDialog());
 
         try {
             currentBookId = UUID.fromString(parameter);
@@ -66,6 +70,7 @@ public class SingleBookView extends VerticalLayout implements HasUrlParameter<St
     private void loadAuthorsByBook(BookEntity book) {
         if (book.getAuthorIds() == null || book.getAuthorIds().isEmpty()) {
             Notification.show("No authors found for this book.", 3000, Notification.Position.MIDDLE);
+            authorGrid.setItems(); // Очистить таблицу, если авторов нет
             return;
         }
 
@@ -97,6 +102,47 @@ public class SingleBookView extends VerticalLayout implements HasUrlParameter<St
                 return removeButton;
             }).setHeader("Actions");
         }
+    }
+
+    private void showAddAuthorDialog() {
+        libraryService.getAllAuthors().subscribe(authors -> {
+            getUI().ifPresent(ui -> ui.access(() -> {
+                Dialog dialog = new Dialog();
+                dialog.setHeaderTitle("Select Author to Add");
+
+                Grid<AuthorEntity> authorSelectionGrid = new Grid<>(AuthorEntity.class, false);
+                authorSelectionGrid.addColumn(AuthorEntity::getName).setHeader("Name");
+
+                authorSelectionGrid.setItems(authors);
+
+                authorSelectionGrid.addSelectionListener(selection -> {
+                    selection.getFirstSelectedItem().ifPresent(author -> {
+                        addAuthorToBook(author);
+                        dialog.close();
+                    });
+                });
+
+                dialog.add(authorSelectionGrid);
+                dialog.open();
+            }));
+        }, error -> {
+            getUI().ifPresent(ui -> ui.access(() ->
+                    Notification.show("Failed to load authors: " + error.getMessage(), 3000, Notification.Position.MIDDLE)
+            ));
+        });
+    }
+
+    private void addAuthorToBook(AuthorEntity author) {
+        libraryService.addAuthorToBook(currentBookId, author.getId()).subscribe(book -> {
+            getUI().ifPresent(ui -> ui.access(() -> {
+                Notification.show("Author added successfully: " + author.getName(), 2000, Notification.Position.MIDDLE);
+                loadAuthorsByBook(book);
+            }));
+        }, error -> {
+            getUI().ifPresent(ui -> ui.access(() ->
+                    Notification.show("Failed to add author: " + error.getMessage(), 3000, Notification.Position.MIDDLE)
+            ));
+        });
     }
 
     private void removeAuthorFromBook(AuthorEntity author) {
