@@ -21,17 +21,17 @@ public class AuthorView extends VerticalLayout {
     private final LibraryService libraryService;
     private final Grid<AuthorEntity> authorGrid = new Grid<>(AuthorEntity.class, false);
     private final TextField nameField = new TextField("Name");
-    private final TextField filterField = new TextField("Filter by Name"); // Поле для фильтрации
-    private final Button filterButton = new Button("Filter"); // Кнопка фильтрации
+    private final TextField filterField = new TextField("Filter by Name");
+    private final Button filterButton = new Button("Filter");
     private final Button addButton = new Button("Add Author");
     private final Button refreshButton = new Button("Refresh");
 
     @PostConstruct
     public void init() {
+        setupFilter();
         setupGrid();
         setupForm();
         setupListeners();
-        setupFilter();
         Notification.show("Loading authors...", 2000, Notification.Position.MIDDLE);
         loadAuthors();
     }
@@ -56,12 +56,11 @@ public class AuthorView extends VerticalLayout {
     }
 
     private void setupFilter() {
-        // Фильтрация авторов
         filterButton.addClickListener(event -> {
             String filterText = filterField.getValue();
             if (filterText == null || filterText.trim().isEmpty()) {
                 Notification.show("Please enter a name to filter", 3000, Notification.Position.MIDDLE);
-                loadAuthors(); // Если поле фильтра пустое, загружаем всех авторов
+                loadAuthors();
                 return;
             }
 
@@ -81,7 +80,7 @@ public class AuthorView extends VerticalLayout {
                                 .toList();
                         if (filteredAuthors.isEmpty()) {
                             Notification.show("No authors found for the name: " + name, 3000, Notification.Position.MIDDLE);
-                            authorGrid.setItems(); // Очищаем таблицу
+                            authorGrid.setItems();
                         } else {
                             authorGrid.setItems(filteredAuthors);
                         }
@@ -107,7 +106,7 @@ public class AuthorView extends VerticalLayout {
     }
 
     private void setupForm() {
-        HorizontalLayout formLayout = new HorizontalLayout(nameField, addButton, refreshButton);
+        HorizontalLayout formLayout = new HorizontalLayout(nameField, addButton);
         add(formLayout);
     }
 
