@@ -1,6 +1,7 @@
 package kz.learn.libraryapp.ui;
 
 import com.vaadin.flow.component.button.Button;
+import com.vaadin.flow.component.datepicker.DatePicker;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.html.Anchor;
@@ -9,6 +10,7 @@ import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.server.StreamResource;
 import jakarta.annotation.PostConstruct;
 import kz.learn.libraryapp.entity.AuthorEntity;
 import kz.learn.libraryapp.entity.BookEntity;
@@ -16,6 +18,17 @@ import kz.learn.libraryapp.repository.AuthorRepository;
 import kz.learn.libraryapp.service.LibraryService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Route("books")
 @Slf4j
@@ -30,8 +43,8 @@ public class BookView extends VerticalLayout {
 
     @PostConstruct
     public void init() {
-        setupGrid();
         setupFilter();
+        setupGrid();
         setupListeners();
         Notification.show("Loading books...", 2000, Notification.Position.MIDDLE);
         loadBooks();
@@ -104,7 +117,8 @@ public class BookView extends VerticalLayout {
     private void setupListeners() {
         Button openAddDialogButton = new Button("Add Book", event -> openAddBookDialog());
         Button refreshButton = new Button("Refresh", event -> loadBooks());
-        HorizontalLayout buttonsLayout = new HorizontalLayout(openAddDialogButton, refreshButton);
+        Button exportButton = new Button("Export to Excel", event -> openDateRangeDialog());
+        HorizontalLayout buttonsLayout = new HorizontalLayout(openAddDialogButton, exportButton);
         add(buttonsLayout);
     }
 
@@ -166,6 +180,80 @@ public class BookView extends VerticalLayout {
             getUI().ifPresent(ui -> ui.access(() ->
                     Notification.show("Failed to delete book: " + error.getMessage(), 3000, Notification.Position.MIDDLE)
             ));
+        });
+    }
+
+
+    private void openDateRangeDialog() {
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("Select Date Range");
+
+        DatePicker startDatePicker = new DatePicker("Date From");
+        DatePicker endDatePicker = new DatePicker("Date To");
+        endDatePicker.setValue(LocalDate.now()); // По умолчанию сегодняшняя дата
+
+        Button exportButton = new Button("Export", event -> {
+            LocalDate startDate = startDatePicker.getValue();
+            LocalDate endDate = endDatePicker.getValue();
+            if (startDate == null || endDate == null) {
+                Notification.show("Please select both dates", 3000, Notification.Position.MIDDLE);
+                return;
+            }
+            if (endDate.isBefore(startDate)) {
+                Notification.show("End date must be after start date", 3000, Notification.Position.MIDDLE);
+                return;
+            }
+
+            StreamResource resource = createExcelResource(startDate, endDate);
+            Anchor downloadLink = new Anchor(resource, "Download Excel");
+            downloadLink.getElement().setAttribute("download", true);
+            add(downloadLink);
+
+            Notification.show("Excel file created. Click the download link.", 3000, Notification.Position.MIDDLE);
+            dialog.close();
+        });
+
+        Button cancelButton = new Button("Cancel", event -> dialog.close());
+        HorizontalLayout buttonLayout = new HorizontalLayout(exportButton, cancelButton);
+
+        VerticalLayout dialogLayout = new VerticalLayout(startDatePicker, endDatePicker, buttonLayout);
+        dialog.add(dialogLayout);
+        dialog.open();
+    }
+
+    private StreamResource createExcelResource(LocalDate startDate, LocalDate endDate) {
+        return new StreamResource("books.xlsx", () -> {
+            try (Workbook workbook = new XSSFWorkbook()) {
+                Sheet sheet = workbook.createSheet("Books");
+
+                Row headerRow = sheet.createRow(0);
+                headerRow.createCell(0).setCellValue("ID");
+                headerRow.createCell(1).setCellValue("Title");
+                headerRow.createCell(2).setCellValue("Added Date");
+
+                List<BookEntity> books = libraryService.getAllBooks()
+                        .block()
+                        .stream()
+                        .filter(book -> {
+                            LocalDate addedDate = book.getAddedDate();
+                            return addedDate != null && !addedDate.isBefore(startDate) && !addedDate.isAfter(endDate);
+                        })
+                        .collect(Collectors.toList());
+
+                int rowNum = 1;
+                for (BookEntity book : books) {
+                    Row row = sheet.createRow(rowNum++);
+                    row.createCell(0).setCellValue(book.getId().toString());
+                    row.createCell(1).setCellValue(book.getTitle());
+                    row.createCell(2).setCellValue(book.getAddedDate().toString());
+                }
+
+                ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+                workbook.write(outputStream);
+                return new ByteArrayInputStream(outputStream.toByteArray());
+            } catch (IOException e) {
+                throw new RuntimeException("Error while creating Excel file", e);
+            }
         });
     }
 }
